@@ -34,15 +34,53 @@ def parameter_dict2array(parameters):
     return np.array([parameters.get(key, None) for key in order])
 
 
-def earthquake_sim_fn(params):
+def early_return(catalog_params, beta):
+    early_return_bool = False
+    # copied across from ETAS package run
+    area = 406963
+    timewindow_length = 10592.0
+    expected_n_background = (
+        np.power(10, catalog_params["log10_mu"]) * area * timewindow_length
+    )
+
+    if expected_n_background > 400_000:
+        early_return_bool = True
+    if expected_n_background < 20:
+        early_return_bool = True
+    theta = parameter_dict2array(catalog_params)
+    print("Theta: ", theta)
+    br = branching_ratio(theta, beta)
+    print(f"Branching ratio: {br}")
+    
+    # subcritical check - k
+    k = np.power(10, catalog_params["log10_k0"])
+    alpha = catalog_params.get("alpha", 1.0)
+    if k > 1 - (alpha/beta):
+        early_return_bool = True
+
+    if br > 1.05:  # TODO! EXPERIMENTAL - set arbitrarily
+        early_return_bool = True
+
+    return early_return_bool
+
+
+def earthquake_sim_fn(key, mu, a, k0, c, rho):
     # TODO TESTING
+    print('mu, a, k0, c, rho:', mu, a, k0, c, rho)
     with open("data/config/SCEDC_30.json", 'r') as f:
         simulation_config = json.load(f)
     catalog_params = simulation_config["theta_0"].copy()
 
     try:
-        keys = ['log10_mu', 'log10_k0', "a", 'log10_c', 'rho']
-        params_dict = dict(zip(keys, np.log10(params[:2]).tolist() + [params[2]] + [np.log10(params[3]).tolist()] + [params[4]]))  # Attempt conversion
+        params_dict = dict(
+            {
+                'log10_mu': np.log10(mu),
+                'log10_k0': np.log10(k0),
+                'a': a,
+                'log10_c': np.log10(c),
+                'rho': rho
+            }
+        )  # Attempt conversion
         params_dict["a"] = params_dict["a"].item()
         params_dict['rho'] = params_dict['rho'].item()
     except Exception as e:
@@ -58,35 +96,10 @@ def earthquake_sim_fn(params):
     if "a" not in catalog_params:
         catalog_params["a"] = simulation_config["beta"]
 
-    theta = parameter_dict2array(catalog_params)
-    print("Theta: ", theta)
-    br = branching_ratio(theta, simulation_config["beta"])
-    print(f"Branching ratio: {br}")
+    if early_return(catalog_params, simulation_config["beta"]):
+        print("stopping early")
+        return None
 
-    if br > 1.1:  # TODO! EXPERIMENTAL - set arbitrarily
-        return
-
-    # TODO: EARLY RETURN
-    catalog = generate_background_events(
-        region,
-        timewindow_start=pd.to_datetime(simulation_config["timewindow_start"]),
-        timewindow_end=pd.to_datetime(simulation_config["timewindow_end"]),
-        parameters=catalog_params,
-        mc=simulation_config["mc"],  # magnitude of completeness
-        beta=simulation_config["beta"],  # Richter scale magnitude
-        delta_m=simulation_config["delta_m"]  # bin size of magnitudes
-        # m_max=m_max,
-        # background_lats=background_lats,
-        # background_lons=background_lons,
-        # background_probs=background_probs,
-        # gaussian_scale=gaussian_scale,
-    )
-    print(f"Catalog length: {len(catalog)}")
-    if len(catalog.index) > 400_000:
-        return
-    if len(catalog.index) < 5:
-        return
-    
     synthetic = generate_catalog(
         polygon=region,
         timewindow_start=pd.to_datetime(simulation_config["timewindow_start"]),
@@ -165,7 +178,7 @@ def ripley_k_thresholded(times_days, mags):
                 # We can do a binary search:
                 # index j such that times[j] <= t_i + w
                 # np.searchsorted returns the insertion index to keep sorted order
-                j = np.searchsorted(times_days, t_i + w, side='right')
+                j = np.searchsorted(times_days, t_i +w,  side='right')
                 # count how many events are <= t_i + w, but strictly greater than i_large
                 # i.e. count = j - (i_large + 1)
                 count_in_window = max(0, j - (i_large + 1))
@@ -178,7 +191,7 @@ def ripley_k_thresholded(times_days, mags):
 
 def sum_fn(catalog):
     if catalog is None:  # i.e., something gone wrong in simulation / invalid
-        return -np.ones(39) + 0.1*np.random.normal(0, 0.1, 39)  # TODO: make this implausible from valid summaries - but not too wacky
+        return -np.ones(39) + 0.1*np.random.normal(0, 1.0, 39)  # TODO: make this implausible from valid summaries - but not too wacky
     cat_sorted = catalog.sort_values("time")
 
     # S1: log num events
