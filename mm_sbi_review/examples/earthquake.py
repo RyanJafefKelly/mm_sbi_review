@@ -48,16 +48,15 @@ def early_return(catalog_params, beta):
     if expected_n_background < 20:
         early_return_bool = True
     theta = parameter_dict2array(catalog_params)
-    print("Theta: ", theta)
-    br = branching_ratio(theta, beta)
-    print(f"Branching ratio: {br}")
+    # print("Theta: ", theta)
+    # print(f"Branching ratio: {br}")
     
     # subcritical check - k
     k = np.power(10, catalog_params["log10_k0"])
     alpha = catalog_params.get("alpha", 1.0)
     if k > 1 - (alpha/beta):
         early_return_bool = True
-
+    br = branching_ratio(theta, beta)
     if br > 1.05:  # TODO! EXPERIMENTAL - set arbitrarily
         early_return_bool = True
 

@@ -1,4 +1,4 @@
-from mm_sbi_review.examples.earthquake import earthquake_sim_fn, sum_fn
+from mm_sbi_review.examples.earthquake import earthquake_sim_fn, sum_fn, early_return
 from mm_sbi_review.scripts.utils import download_file, extract_tar_gz, combine_ascii_files
 import numpy as np
 import torch
@@ -19,7 +19,7 @@ from numpyro.distributions import constraints
 from numpyro.distributions import Gamma, Uniform
 from numpyro.distributions.util import is_prng_key, validate_sample, promote_shapes
 import jax
-
+import numpyro
 
 def parameter_dict2array(parameters):
     order = [
@@ -591,7 +591,7 @@ def run_earthquake():
 
     # prior = ETASPrior()  # TODO
     prior = Uniform(low=jnp.array([0., 0., 0., 0.0, 1.0]),
-                         high=jnp.array([0.002, 2.4, 1.0, 1.0, 2.0]))
+                         high=jnp.array([0.0001, 2.4, 1.0, 1.0, 2.0]))
     # prior = dist.Uniform(low=jnp.repeat(0.0, 5),
     #                      high=jnp.repeat(1.0, 5))
     # x_test = jnp.array([[0.0005, 0.1, 0.05, 0.5, 1.5]])
@@ -607,15 +607,55 @@ def run_earthquake():
     sim_test = sim_fn(rng_key, *true_params)
     observed_summaries = summ_fn(sim_test)  # NOTE: overrides
     lp = prior.log_prob(true_params)
+
+    def valid_fn(thetas):
+        mu, a, k0, c, rho = thetas
+        with open("data/config/SCEDC_30.json", 'r') as f:
+            simulation_config = json.load(f)
+        catalog_params = simulation_config["theta_0"].copy()
+
+        try:
+            params_dict = dict(
+                {
+                    'log10_mu': np.log10(mu),
+                    'log10_k0': np.log10(k0),
+                    'a': a,
+                    'log10_c': np.log10(c),
+                    'rho': rho
+                }
+            )  # Attempt conversion
+            params_dict["a"] = params_dict["a"].item()
+            params_dict['rho'] = params_dict['rho'].item()
+        except Exception as e:
+            print(e)
+
+        catalog_params.update(params_dict)
+
+        # shape_coords = "data/input_data/california_shape.npy"  # used to be simulation_config["shape_coords"]
+
+        # np.random.seed(777)
+        # Note: in four param model version, alpha ("a") fixed to beta
+        if "a" not in catalog_params:
+            catalog_params["a"] = simulation_config["beta"]
+
+        if early_return(catalog_params, simulation_config["beta"]):
+            return False
+        else:
+            return True
+
+    v = valid_fn(true_params)
+
+    
     mcmc = run_snl(model, prior, sim_fn, summ_fn, rng_key,
                    observed_summaries,
-                   num_sims_per_round=3_000,
+                   num_sims_per_round=300,
                    num_rounds=5,
                    true_params=true_params,
                    theta_dims=5,
                    jax_parallelise=False,
                    num_chains=4,
                    only_valid_sims_in_first_round=True,
+                   valid_fn=valid_fn
                    )
     mcmc.print_summary()
     # num_prior_samples = 10
@@ -631,4 +671,5 @@ def run_earthquake():
 
 
 if __name__ == "__main__":
+    numpyro.set_host_device_count(4)
     run_earthquake()
