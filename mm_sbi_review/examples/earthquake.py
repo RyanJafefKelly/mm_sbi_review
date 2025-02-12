@@ -1,18 +1,16 @@
 import json
 import logging
-import os
 
 import numpy as np
 import pandas as pd
 from shapely.geometry import Polygon
 
-import matplotlib.pyplot as plt
-
 from etas import set_up_logger
 from etas.inversion import round_half_up, branching_ratio
-from etas.simulation import generate_catalog, generate_background_events
+from etas.simulation import generate_catalog
 
 set_up_logger(level=logging.INFO)
+
 
 def parameter_dict2array(parameters):
     order = [
@@ -48,19 +46,69 @@ def early_return(catalog_params, beta):
     if expected_n_background < 20:
         early_return_bool = True
     theta = parameter_dict2array(catalog_params)
-    # print("Theta: ", theta)
-    # print(f"Branching ratio: {br}")
-    
-    # subcritical check - k
     k = np.power(10, catalog_params["log10_k0"])
-    alpha = catalog_params.get("alpha", 1.0)
-    if k > 1 - (alpha/beta):
+    alpha = catalog_params.get("a", 1.0)
+    if k > 1 - (alpha/beta) and alpha != beta:
         early_return_bool = True
     br = branching_ratio(theta, beta)
-    if br > 1.05:  # TODO! EXPERIMENTAL - set arbitrarily
+    if br > 1.5:  # TODO! EXPERIMENTAL - set arbitrarily - avoid supercritical - some leeway
         early_return_bool = True
 
     return early_return_bool
+
+
+def earthquake_sim_fn_4_param(key, mu, k0, c, rho):
+    # TODO TESTING
+    print('mu, k0, c, rho:', mu, k0, c, rho)
+    with open("data/config/SCEDC_30.json", 'r') as f:
+        simulation_config = json.load(f)
+    catalog_params = simulation_config["theta_0"].copy()
+
+    try:
+        params_dict = dict(
+            {
+                'log10_mu': np.log10(mu),
+                'log10_k0': np.log10(k0),
+                'a': simulation_config["beta"],
+                'log10_c': np.log10(c),
+                'rho': rho
+            }
+        )  # Attempt conversion
+        # params_dict["a"] = params_dict["a"].item()
+        params_dict['rho'] = params_dict['rho'].item()
+    except Exception as e:
+        print(e)
+
+    catalog_params.update(params_dict)
+
+    # shape_coords = "data/input_data/california_shape.npy"  # used to be simulation_config["shape_coords"]
+    region = Polygon(np.load(simulation_config["shape_coords"]))
+
+    # np.random.seed(777)
+    # Note: in four param model version, alpha ("a") fixed to beta
+
+    if early_return(catalog_params, simulation_config["beta"]):
+        print("stopping early")
+        return None
+
+    try:
+        synthetic = generate_catalog(
+            polygon=region,
+            timewindow_start=pd.to_datetime(simulation_config["timewindow_start"]),
+            timewindow_end=pd.to_datetime(simulation_config["timewindow_end"]),
+            parameters=catalog_params,
+            mc=simulation_config["mc"],  # magnitude of completeness
+            beta_main=simulation_config["beta"],  # Richter scale magnitude
+            delta_m=simulation_config["delta_m"]  # bin size of magnitudes
+        )
+    except Exception as e:
+        print(e)
+        return None
+    synthetic.magnitude = round_half_up(synthetic.magnitude, 1)
+    synthetic.index.name = 'id'
+    # primary_start = simulation_config['primary_start']
+    synthetic = synthetic.sort_values(by='time')
+    return synthetic
 
 
 def earthquake_sim_fn(key, mu, a, k0, c, rho):
@@ -136,6 +184,7 @@ def ripley_k_unmarked(times_days):
             sum_counts[k] += (pointers[k] - i - 1)
 
     Kvals = (T * sum_counts) / (n * n)
+    print("Kvals[0]: ", Kvals[0])
     return Kvals
 
 
@@ -189,8 +238,9 @@ def ripley_k_thresholded(times_days, mags):
     return Kvals
 
 def sum_fn(catalog):
+    num_summaries = 23
     if catalog is None:  # i.e., something gone wrong in simulation / invalid
-        return -np.ones(39) + 0.1*np.random.normal(0, 1.0, 39)  # TODO: make this implausible from valid summaries - but not too wacky
+        return np.random.normal(-10, 1.0, num_summaries)  # TODO: make this implausible from valid summaries - but not too wacky
     cat_sorted = catalog.sort_values("time")
 
     # S1: log num events
@@ -202,29 +252,33 @@ def sum_fn(catalog):
     # integer of seconds since epoch:
     times_sec = times_ns.astype("int64")
     times_days = times_sec / 86400.0
+    times_days = np.squeeze(times_days)
     dt_sec = np.diff(times_sec)
 
     # Convert to days (optional, depends on your preference):
     dt_days = dt_sec / 86400.0
 
     # --- S2, S3, S4: 20%, 50%, 90% quantiles ---
-    S2, S3, S4 = np.quantile(dt_days, [0.2, 0.5, 0.9])
+    # NOTE: maybe could log this?
+    S2, S3, S4 = np.log(np.quantile(dt_days, [0.2, 0.5, 0.9]))
 
     # S5: ratio of the mean and median of the inter-event time histogram
     mean_dt = np.mean(dt_days)
     median_dt = np.median(dt_days)
     S5 = mean_dt / median_dt if median_dt > 0 else np.inf
+    S5 = np.log(S5)
 
     # S6-S23: Ripley's K statistic
-    mags = cat_sorted.magnitude.values
     Kvals_unmarked = ripley_k_unmarked(times_days)
 
     # S24-S39: Magnitude thresholded Ripley's K statistic
-    Kvals_thresholded = ripley_k_thresholded(times_days, mags)
-    Kvals_thresholded_flat = Kvals_thresholded.flatten()
+    # mags = cat_sorted.magnitude.values
+    # Kvals_thresholded = ripley_k_thresholded(times_days, mags)
+    # Kvals_thresholded_flat = Kvals_thresholded.flatten()
 
     summary_stats = np.concatenate([[S1], [S2], [S3], [S4], [S5],
                                     Kvals_unmarked,
-                                    Kvals_thresholded_flat])
+                                    # Kvals_thresholded_flat
+                                    ])
 
     return summary_stats
