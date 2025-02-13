@@ -239,19 +239,22 @@ def run_earthquake():
 
     rng_key = random.PRNGKey(1)
 
-    with open("res/earthquake_4_param/thetas_all_round_1.pkl", "rb") as f:
+    num_rounds_run_already = 2
+
+    with open(f"res/earthquake_4_param/thetas_all_round_{str(num_rounds_run_already)}.pkl", "rb") as f:
         thetas_all = pkl.load(f)
 
-    with open("res/earthquake_4_param/x_sims_reduced_all_round_1.pkl", "rb") as f:
+    with open(f"res/earthquake_4_param/x_sims_all_round_{str(num_rounds_run_already)}.pkl", "rb") as f:
         x_sims_all = pkl.load(f)
     model_param_names = ["mu", "k0", "c", "rho"]
     num_sims_per_round = 3000
     theta_dims = 4
+    num_rounds = 5 - num_rounds_run_already
     mcmc = run_rsnl(model, prior, sim_fn, summ_fn,
                     rng_key,
                     observed_summaries,
                     num_sims_per_round=num_sims_per_round,
-                    num_rounds=5,
+                    num_rounds=num_rounds,
                     true_params=None,  # NOTE: dummy
                     theta_dims=theta_dims,
                     jax_parallelise=False,
