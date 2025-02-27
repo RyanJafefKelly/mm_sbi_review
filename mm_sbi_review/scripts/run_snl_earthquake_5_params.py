@@ -16,7 +16,7 @@ import jax.random as random
 import jax.numpy as jnp
 from numpyro.distributions import Distribution as dist
 from numpyro.distributions import constraints
-from numpyro.distributions import Gamma, Uniform
+from numpyro.distributions import Gamma, Uniform, Independent
 from numpyro.distributions.util import is_prng_key, validate_sample, promote_shapes
 import jax
 import numpyro
@@ -530,14 +530,15 @@ class ETASPrior(dist):
         out = out.reshape(*sample_shape, 5)
         return out
 
+
 def run_earthquake():
     np.random.seed(123)
     torch.manual_seed(321)
-    true_mu = 1.58e-06
-    true_alpha = 1.3
-    true_k = 0.0025
-    true_c = 0.003
-    true_p = 1.05  # or 0.66 or 1.05
+    true_mu = 4.42e-06
+    true_alpha = 1.13
+    true_k = 5.44e-04
+    true_c = 0.169
+    true_p = 1.182
 
     true_params = {'log10_mu': np.log10(true_mu), 'log10_k0': np.log10(true_k),
                    'a': true_alpha,
@@ -575,8 +576,8 @@ def run_earthquake():
     print('Removed',len(raw_catalog)-len_trunc_x, 'events outside polygon')
 
     # filter events within timewindow
-    auxiliary_start = '1981-01-01 00:00:00'
-    test_nll_end = '2020-01-17 00:00:00'
+    auxiliary_start = '1985-01-01 00:00:00'
+    test_nll_end = '2014-01-11 00:00:00'
     catalog = catalog[catalog['time']>=auxiliary_start]
     catalog = catalog[catalog['time']<test_nll_end]
     len_trunc_t = len(catalog)
@@ -591,7 +592,8 @@ def run_earthquake():
 
     # prior = ETASPrior()  # TODO
     prior = Uniform(low=jnp.array([0., 0., 0., 0.0, 1.0]),
-                         high=jnp.array([0.0001, 2.4, 1.0, 1.0, 2.0]))
+                    high=jnp.array([0.0001, 2.4, 1.0, 1.0, 2.0]))
+    prior = Independent(prior, 1)
     # prior = dist.Uniform(low=jnp.repeat(0.0, 5),
     #                      high=jnp.repeat(1.0, 5))
     # x_test = jnp.array([[0.0005, 0.1, 0.05, 0.5, 1.5]])
@@ -602,10 +604,11 @@ def run_earthquake():
     summ_fn = sum_fn
     rng_key = random.PRNGKey(0)
 
+    # TODO: just dummy values atm
     true_params = jnp.array([true_mu, true_alpha, true_k, true_c, true_p])
 
-    sim_test = sim_fn(rng_key, *true_params)
-    observed_summaries = summ_fn(sim_test)  # NOTE: overrides
+    # sim_test = sim_fn(rng_key, *true_params)
+    # observed_summaries = summ_fn(sim_test)  # NOTE: overrides
     lp = prior.log_prob(true_params)
 
     def valid_fn(thetas):
@@ -645,10 +648,10 @@ def run_earthquake():
 
     v = valid_fn(true_params)
 
-    
+    # TODO: check sim and obs summaries are well and misspecified
     mcmc = run_snl(model, prior, sim_fn, summ_fn, rng_key,
                    observed_summaries,
-                   num_sims_per_round=300,
+                   num_sims_per_round=600,
                    num_rounds=5,
                    true_params=true_params,
                    theta_dims=5,

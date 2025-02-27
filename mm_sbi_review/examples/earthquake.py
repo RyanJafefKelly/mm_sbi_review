@@ -60,8 +60,14 @@ def early_return(catalog_params, beta):
 def earthquake_sim_fn_4_param(key, mu, k0, c, rho):
     # TODO TESTING
     print('mu, k0, c, rho:', mu, k0, c, rho)
-    with open("data/config/SCEDC_30.json", 'r') as f:
-        simulation_config = json.load(f)
+    try:
+        with open("data/config/SCEDC_30.json", 'r') as f:
+            simulation_config = json.load(f)
+    except FileNotFoundError:
+        with open("../data/config/SCEDC_30.json", 'r') as f:
+            simulation_config = json.load(f)
+        simulation_config["shape_coords"] = "../" + simulation_config["shape_coords"]
+
     catalog_params = simulation_config["theta_0"].copy()
 
     try:
@@ -82,6 +88,7 @@ def earthquake_sim_fn_4_param(key, mu, k0, c, rho):
     catalog_params.update(params_dict)
 
     # shape_coords = "data/input_data/california_shape.npy"  # used to be simulation_config["shape_coords"]
+    print("s: ", simulation_config["shape_coords"])
     region = Polygon(np.load(simulation_config["shape_coords"]))
 
     # np.random.seed(777)
@@ -114,8 +121,12 @@ def earthquake_sim_fn_4_param(key, mu, k0, c, rho):
 def earthquake_sim_fn(key, mu, a, k0, c, rho):
     # TODO TESTING
     print('mu, a, k0, c, rho:', mu, a, k0, c, rho)
-    with open("data/config/SCEDC_30.json", 'r') as f:
-        simulation_config = json.load(f)
+    try:
+        with open("data/config/SCEDC_30.json", 'r') as f:
+            simulation_config = json.load(f)
+    except FileNotFoundError:
+        with open("../data/config/SCEDC_30.json", 'r') as f:
+            simulation_config = json.load(f)
     catalog_params = simulation_config["theta_0"].copy()
 
     try:

@@ -239,12 +239,12 @@ def run_earthquake():
 
     rng_key = random.PRNGKey(1)
 
-    num_rounds_run_already = 2
+    num_rounds_run_already = 4
 
-    with open(f"res/earthquake_4_param/thetas_all_round_{str(num_rounds_run_already)}.pkl", "rb") as f:
+    with open(f"res/earthquake_4_param/thetas_all_round_{str(2)}.pkl", "rb") as f:
         thetas_all = pkl.load(f)
 
-    with open(f"res/earthquake_4_param/x_sims_all_round_{str(num_rounds_run_already)}.pkl", "rb") as f:
+    with open(f"res/earthquake_4_param/x_sims_all_round_{str(2)}.pkl", "rb") as f:
         x_sims_all = pkl.load(f)
     model_param_names = ["mu", "k0", "c", "rho"]
     num_sims_per_round = 3000
@@ -261,7 +261,7 @@ def run_earthquake():
                     num_chains=1,
                     target_accept_prob=0.8,
                     only_valid_sims_in_first_round=True,
-                    save_each_round=True,
+                    save_each_round=False,
                     valid_fn=valid_fn,
                     previous_thetas=thetas_all,
                     previous_x_sims=x_sims_all,
