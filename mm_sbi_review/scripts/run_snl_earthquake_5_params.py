@@ -1,8 +1,13 @@
 from mm_sbi_review.examples.earthquake import earthquake_sim_fn, sum_fn, early_return
-from mm_sbi_review.scripts.utils import download_file, extract_tar_gz, combine_ascii_files
+from mm_sbi_review.scripts.utils import (
+    download_file,
+    extract_tar_gz,
+    combine_ascii_files,
+)
 import numpy as np
 import torch
 from torch import tensor
+
 # from torch.distributions import Distribution, Uniform, Gamma
 from etas.inversion import round_half_up, branching_ratio
 from etas.simulation import generate_catalog, generate_background_events
@@ -20,6 +25,7 @@ from numpyro.distributions import Gamma, Uniform, Independent
 from numpyro.distributions.util import is_prng_key, validate_sample, promote_shapes
 import jax
 import numpyro
+
 
 def parameter_dict2array(parameters):
     order = [
@@ -40,15 +46,19 @@ def parameter_dict2array(parameters):
 
     return np.array([parameters.get(key, None) for key in order])
 
+
 def parameter_dict2array(param_dict):
     # Example placeholder
-    return np.array([
-        param_dict["log10_mu"],
-        param_dict["log10_k0"],
-        param_dict["a"],
-        param_dict["log10_c"],
-        param_dict["rho"],
-    ], dtype=float)
+    return np.array(
+        [
+            param_dict["log10_mu"],
+            param_dict["log10_k0"],
+            param_dict["a"],
+            param_dict["log10_c"],
+            param_dict["rho"],
+        ],
+        dtype=float,
+    )
 
 
 class SBEtasPrior(dist):
@@ -63,11 +73,11 @@ class SBEtasPrior(dist):
         """
         # Possibly do transformations, e.g.:
         log10_mu = np.log10(mu) if mu > 0 else -np.inf
-        log10_k0 = np.log10(K)  if K  > 0 else -np.inf
-        log10_c  = np.log10(c)  if c  > 0 else -np.inf
+        log10_k0 = np.log10(K) if K > 0 else -np.inf
+        log10_c = np.log10(c) if c > 0 else -np.inf
         param_dict = {
             "log10_mu": log10_mu,
-            'log10_iota': None,
+            "log10_iota": None,
             "log10_k0": log10_k0,
             "a": alpha,
             "log10_c": log10_c,
@@ -80,12 +90,18 @@ class SBEtasPrior(dist):
         # Do your real ratio computation, or just return a placeholder:
         # e.g. br_val = some_function(cat_params, config["beta"])
         # For demo, we set 0.5 so it always passes
-        branch_arr = [cat_params["log10_mu"], cat_params["log10_iota"],
-                      cat_params["log10_k0"], cat_params["a"],
-                      cat_params["log10_c"],
-                      cat_params["omega"], cat_params["log10_tau"],
-                      cat_params["log10_d"], cat_params["gamma"],
-                      cat_params["rho"]]
+        branch_arr = [
+            cat_params["log10_mu"],
+            cat_params["log10_iota"],
+            cat_params["log10_k0"],
+            cat_params["a"],
+            cat_params["log10_c"],
+            cat_params["omega"],
+            cat_params["log10_tau"],
+            cat_params["log10_d"],
+            cat_params["gamma"],
+            cat_params["rho"],
+        ]
         br_val = branching_ratio(branch_arr, config["beta"])
         return br_val
 
@@ -100,7 +116,7 @@ class SBEtasPrior(dist):
         """
         super().__init__(batch_shape=(), event_shape=(5,), validate_args=validate_args)
 
-        with open("data/config/SCEDC_30.json", 'r') as f:
+        with open("data/config/SCEDC_30.json", "r") as f:
             self.simulation_config = json.load(f)
 
         if beta is None:
@@ -121,22 +137,23 @@ class SBEtasPrior(dist):
         self.c_low, self.c_high = 0.0, 1.0
         # p ~ Uniform(1, 2)
         self.p_low, self.p_high = 1.0, 2.0
-        
+
         # without mu, used constrained sampling
-        self.uni_dist = Uniform(low=jnp.array([0.0, 0.0, 0.0, 0.0]),
-                                high=jnp.array([self.beta, 1.0, 2.0, 1.0]))
-        
+        self.uni_dist = Uniform(
+            low=jnp.array([0.0, 0.0, 0.0, 0.0]),
+            high=jnp.array([self.beta, 1.0, 2.0, 1.0]),
+        )
 
     @validate_sample
     def log_prob(self, value):
         if value.shape[-1] != 5:
             raise ValueError("SubcriticalUniform expects last dimension=5")
 
-        mu     = value[..., 0]
-        K      = value[..., 1]
-        alpha  = value[..., 2]
-        c      = value[..., 3]
-        p      = value[..., 4]
+        mu = value[..., 0]
+        K = value[..., 1]
+        alpha = value[..., 2]
+        c = value[..., 3]
+        p = value[..., 4]
 
         # We want to compute the log probability for each dimension
         # under the "conditional uniform" construction:
@@ -158,7 +175,7 @@ class SBEtasPrior(dist):
         # but only valid if alpha < beta, so (beta - alpha) > 0
         # We'll define:
         k_low = 0.0
-        k_high = (self.beta - alpha) / self.beta   # shape (...)
+        k_high = (self.beta - alpha) / self.beta  # shape (...)
         # Must also ensure alpha < beta => (beta - alpha) > 0 => alpha < beta
         k_in_range = (K >= k_low) & (K <= k_high) & (alpha < self.beta)
 
@@ -178,15 +195,15 @@ class SBEtasPrior(dist):
         # => = log(500) - log((beta - alpha)).
 
         # We'll define it explicitly:
-        mu_lp     = jnp.log(1.0 / (self.mu_high - self.mu_low))  # log(1/0.002)= log(500)
-        alpha_lp  = jnp.log(1.0 / (self.alpha_high - self.alpha_low))  # log(1/beta)
+        mu_lp = jnp.log(1.0 / (self.mu_high - self.mu_low))  # log(1/0.002)= log(500)
+        alpha_lp = jnp.log(1.0 / (self.alpha_high - self.alpha_low))  # log(1/beta)
         # For K =>  log(1 / ((beta - alpha)/beta))= log(beta/(beta-alpha))= log beta - log(beta-alpha)
         # c => uniform(0,1) => 0
         # p => uniform(1,2) => log(1/(2-1))= log(1)=0
         # So total is:
         log_p_K_given_alpha = jnp.log(self.beta) - jnp.log(self.beta - alpha)
         # Combine everything:
-        local_lp = (mu_lp + alpha_lp + log_p_K_given_alpha)
+        local_lp = mu_lp + alpha_lp + log_p_K_given_alpha
         # c, p each add 0
 
         # So for valid points:
@@ -210,12 +227,14 @@ class SBEtasPrior(dist):
         rng_mu, rng_alpha, rng_k, rng_c, rng_p = jax.random.split(key, 5)
 
         # 1) mu
-        mu_samps = jax.random.uniform(rng_mu, shape=(n,),
-                                      minval=self.mu_low, maxval=self.mu_high)
+        mu_samps = jax.random.uniform(
+            rng_mu, shape=(n,), minval=self.mu_low, maxval=self.mu_high
+        )
 
         # 2) alpha
-        alpha_samps = jax.random.uniform(rng_alpha, shape=(n,),
-                                         minval=self.alpha_low, maxval=self.alpha_high)
+        alpha_samps = jax.random.uniform(
+            rng_alpha, shape=(n,), minval=self.alpha_low, maxval=self.alpha_high
+        )
 
         # 3) K, depends on alpha => we must pass alpha_samps in
         # K in [0, (beta - alpha)/beta]. We'll build the max array:
@@ -257,18 +276,18 @@ class SBEtasPrior(dist):
         if value.shape[-1] != 5:
             raise ValueError("SBEtasPrior: expected last dimension=5")
 
-        mu     = value[..., 0]
-        K      = value[..., 1]
-        alpha  = value[..., 2]
-        c      = value[..., 3]
-        p      = value[..., 4]
+        mu = value[..., 0]
+        K = value[..., 1]
+        alpha = value[..., 2]
+        c = value[..., 3]
+        p = value[..., 4]
 
         # Start with 0
         lp = jnp.zeros(value.shape[:-1])
 
         gamma_lp = self.mu_dist.log_prob(mu)
         # No top truncation, just mu >= 0
-        valid_mu = (mu >= 0.0)
+        valid_mu = mu >= 0.0
         gamma_lp = jnp.where(valid_mu, gamma_lp, -jnp.inf)
         lp += gamma_lp
 
@@ -308,8 +327,8 @@ class SBEtasPrior(dist):
             cand = jnp.column_stack((mu_cand, uni_cand))
 
             # basic constraints in JAX
-            mu_ok = (mu_cand >= 0.0)
-            subcrit_ok = (uni_cand[:,0] * self.beta) < (self.beta - uni_cand[:,1])
+            mu_ok = mu_cand >= 0.0
+            subcrit_ok = (uni_cand[:, 0] * self.beta) < (self.beta - uni_cand[:, 1])
             mask = mu_ok & subcrit_ok
 
             cand_ok = np.array(cand[mask])  # to CPU
@@ -353,7 +372,9 @@ class SBEtasPrior(dist):
             for row in cand_ok:
                 mu_i, K_i, alpha_i, c_i, p_i = row
                 # Check branching ratio in Python
-                br_val = self.branching_ratio_helper(mu_i, K_i, alpha_i, c_i, p_i, self.simulation_config)
+                br_val = self.branching_ratio_helper(
+                    mu_i, K_i, alpha_i, c_i, p_i, self.simulation_config
+                )
                 if br_val < 1.05:
                     out.append(row)
 
@@ -362,11 +383,13 @@ class SBEtasPrior(dist):
         out_array = out_array.reshape(*sample_shape, 5)
         return jax.device_put(out_array)
 
+
 import jax
 import jax.numpy as jnp
 from numpyro.distributions import Distribution, constraints
 from numpyro.distributions.util import validate_sample
 from numpyro.distributions import Gamma  # for mu
+
 
 class ETASPrior(dist):
     """
@@ -391,7 +414,7 @@ class ETASPrior(dist):
         """
         super().__init__(batch_shape=(), event_shape=(5,), validate_args=validate_args)
         if beta is None:
-            with open("data/config/SCEDC_30.json", 'r') as f:
+            with open("data/config/SCEDC_30.json", "r") as f:
                 self.simulation_config = json.load(f)
 
                 self.beta = self.simulation_config["beta"]
@@ -401,7 +424,7 @@ class ETASPrior(dist):
 
         # 1) mu ~ Gamma(0.1, 0.1)
         self.mu_shape = 0.1
-        self.mu_rate  = 10  # TODO: CHECK ?
+        self.mu_rate = 10  # TODO: CHECK ?
 
         # 2) alpha ~ Uniform(0, beta)
         self.alpha_low, self.alpha_high = 0.0, self.beta
@@ -425,11 +448,11 @@ class ETASPrior(dist):
         if value.shape[-1] != 5:
             raise ValueError("ETASPrior: expected last dimension=5")
 
-        mu     = value[..., 0]
-        alpha  = value[..., 1]
-        K      = value[..., 2]
-        c      = value[..., 3]
-        p      = value[..., 4]
+        mu = value[..., 0]
+        alpha = value[..., 1]
+        K = value[..., 2]
+        c = value[..., 3]
+        p = value[..., 4]
 
         # Start with zeros
         lp = jnp.zeros(value.shape[:-1])
@@ -438,6 +461,7 @@ class ETASPrior(dist):
         # 1) mu ~ Gamma(0.1, 10)
         #    => log_prob from a standard NumPyro Gamma
         from numpyro.distributions import Gamma
+
         mu_dist = Gamma(self.mu_shape, self.mu_rate)
         mu_lp = mu_dist.log_prob(mu)
         # no top/bottom except mu>0
@@ -497,34 +521,34 @@ class ETASPrior(dist):
 
         # 1) mu
         from numpyro.distributions import Gamma
+
         mu_dist = Gamma(self.mu_shape, self.mu_rate)
         mu_samples = mu_dist.sample(rng_mu, (n,))  # shape (n,)
 
         # 2) alpha
-        alpha_samples = jax.random.uniform(rng_alpha, shape=(n,),
-                                           minval=self.alpha_low,
-                                           maxval=self.alpha_high)
+        alpha_samples = jax.random.uniform(
+            rng_alpha, shape=(n,), minval=self.alpha_low, maxval=self.alpha_high
+        )
 
         # 3) K, depends on alpha => in [0, (beta - alpha)/beta]
         # We'll define a helper
         def sample_k(rng_k_i, alpha_i):
-            upper = (self.beta - alpha_i)/self.beta
+            upper = (self.beta - alpha_i) / self.beta
             return jax.random.uniform(rng_k_i, minval=0.0, maxval=upper)
 
         rngs_k = jax.random.split(rng_k, n)
         K_samples = jax.vmap(sample_k)(rngs_k, alpha_samples)
 
         # 4) c ~ Uniform(0,1)
-        c_samples = jax.random.uniform(rng_c, shape=(n,),
-                                       minval=0.0, maxval=1.0)
+        c_samples = jax.random.uniform(rng_c, shape=(n,), minval=0.0, maxval=1.0)
 
         # 5) p ~ Uniform(1,2)
-        p_samples = jax.random.uniform(rng_p, shape=(n,),
-                                       minval=1.0, maxval=2.0)
+        p_samples = jax.random.uniform(rng_p, shape=(n,), minval=1.0, maxval=2.0)
 
         # Combine => shape (n,5)
-        out = jnp.column_stack([mu_samples, alpha_samples, K_samples,
-                                c_samples, p_samples])
+        out = jnp.column_stack(
+            [mu_samples, alpha_samples, K_samples, c_samples, p_samples]
+        )
 
         # Reshape => sample_shape + (5,)
         out = out.reshape(*sample_shape, 5)
@@ -540,9 +564,13 @@ def run_earthquake():
     true_c = 0.169
     true_p = 1.182
 
-    true_params = {'log10_mu': np.log10(true_mu), 'log10_k0': np.log10(true_k),
-                   'a': true_alpha,
-                   'log10_c': np.log10(true_c), 'rho': true_p}
+    true_params = {
+        "log10_mu": np.log10(true_mu),
+        "log10_k0": np.log10(true_k),
+        "a": true_alpha,
+        "log10_c": np.log10(true_c),
+        "rho": true_p,
+    }
     # TODO: first - set up simulator to take in parameters
     # TODO: SNPE
     # TODO: Priors
@@ -555,44 +583,46 @@ def run_earthquake():
     # Download and extract the file
     download_file(url, local_filename)
     extract_tar_gz(local_filename, extract_path)
-    combine_ascii_files('./raw')
+    combine_ascii_files("./raw")
     raw_catalog = pd.read_csv("raw/SCEDC_catalog.csv")
-    raw_catalog['time'] = pd.to_datetime(raw_catalog['time'])
-    raw_catalog = raw_catalog.sort_values(by='time')
-    raw_catalog = raw_catalog[["time", "longitude", "latitude","magnitude"]].dropna()
+    raw_catalog["time"] = pd.to_datetime(raw_catalog["time"])
+    raw_catalog = raw_catalog.sort_values(by="time")
+    raw_catalog = raw_catalog[["time", "longitude", "latitude", "magnitude"]].dropna()
     raw_catalog.reset_index(drop=False, inplace=True)
 
-    polygon_coords = np.load('data/SCEDC_shape.npy')
+    polygon_coords = np.load("data/SCEDC_shape.npy")
 
     poly = Polygon(polygon_coords)
     gdf = gpd.GeoDataFrame(
         raw_catalog,
-        geometry=gpd.points_from_xy(
-            raw_catalog.latitude, raw_catalog.longitude),)
+        geometry=gpd.points_from_xy(raw_catalog.latitude, raw_catalog.longitude),
+    )
 
     catalog = gdf[gdf.intersects(poly)].copy()
     catalog.drop("geometry", axis=1, inplace=True)
     len_trunc_x = len(catalog)
-    print('Removed',len(raw_catalog)-len_trunc_x, 'events outside polygon')
+    print("Removed", len(raw_catalog) - len_trunc_x, "events outside polygon")
 
     # filter events within timewindow
-    auxiliary_start = '1985-01-01 00:00:00'
-    test_nll_end = '2014-01-11 00:00:00'
-    catalog = catalog[catalog['time']>=auxiliary_start]
-    catalog = catalog[catalog['time']<test_nll_end]
+    auxiliary_start = "1985-01-01 00:00:00"
+    test_nll_end = "2014-01-11 00:00:00"
+    catalog = catalog[catalog["time"] >= auxiliary_start]
+    catalog = catalog[catalog["time"] < test_nll_end]
     len_trunc_t = len(catalog)
-    print('Removed',len_trunc_x-len_trunc_t, 'events outside timewindow')
+    print("Removed", len_trunc_x - len_trunc_t, "events outside timewindow")
 
     M_cut = 3.0
-    catalog = catalog[catalog['magnitude']>=M_cut]
+    catalog = catalog[catalog["magnitude"] >= M_cut]
     len_trunc_m = len(catalog)
-    print('Removed',len_trunc_t-len_trunc_m, 'events below Mcut')
+    print("Removed", len_trunc_t - len_trunc_m, "events below Mcut")
 
     observed_summaries = sum_fn(catalog)
 
     # prior = ETASPrior()  # TODO
-    prior = Uniform(low=jnp.array([0., 0., 0., 0.0, 1.0]),
-                    high=jnp.array([0.0001, 2.4, 1.0, 1.0, 2.0]))
+    prior = Uniform(
+        low=jnp.array([0.0, 0.0, 0.0, 0.0, 1.0]),
+        high=jnp.array([0.0001, 2.4, 1.0, 1.0, 2.0]),
+    )
     prior = Independent(prior, 1)
     # prior = dist.Uniform(low=jnp.repeat(0.0, 5),
     #                      high=jnp.repeat(1.0, 5))
@@ -613,22 +643,22 @@ def run_earthquake():
 
     def valid_fn(thetas):
         mu, a, k0, c, rho = thetas
-        with open("data/config/SCEDC_30.json", 'r') as f:
+        with open("data/config/SCEDC_30.json", "r") as f:
             simulation_config = json.load(f)
         catalog_params = simulation_config["theta_0"].copy()
 
         try:
             params_dict = dict(
                 {
-                    'log10_mu': np.log10(mu),
-                    'log10_k0': np.log10(k0),
-                    'a': a,
-                    'log10_c': np.log10(c),
-                    'rho': rho
+                    "log10_mu": np.log10(mu),
+                    "log10_k0": np.log10(k0),
+                    "a": a,
+                    "log10_c": np.log10(c),
+                    "rho": rho,
                 }
             )  # Attempt conversion
             params_dict["a"] = params_dict["a"].item()
-            params_dict['rho'] = params_dict['rho'].item()
+            params_dict["rho"] = params_dict["rho"].item()
         except Exception as e:
             print(e)
 
@@ -649,17 +679,22 @@ def run_earthquake():
     v = valid_fn(true_params)
 
     # TODO: check sim and obs summaries are well and misspecified
-    mcmc = run_snl(model, prior, sim_fn, summ_fn, rng_key,
-                   observed_summaries,
-                   num_sims_per_round=600,
-                   num_rounds=5,
-                   true_params=true_params,
-                   theta_dims=5,
-                   jax_parallelise=False,
-                   num_chains=4,
-                   only_valid_sims_in_first_round=True,
-                   valid_fn=valid_fn
-                   )
+    mcmc = run_snl(
+        model,
+        prior,
+        sim_fn,
+        summ_fn,
+        rng_key,
+        observed_summaries,
+        num_sims_per_round=600,
+        num_rounds=5,
+        true_params=true_params,
+        theta_dims=5,
+        jax_parallelise=False,
+        num_chains=4,
+        only_valid_sims_in_first_round=True,
+        valid_fn=valid_fn,
+    )
     mcmc.print_summary()
     # num_prior_samples = 10
     # prior_samples = prior.sample((num_prior_samples,))

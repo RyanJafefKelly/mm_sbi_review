@@ -48,10 +48,12 @@ def early_return(catalog_params, beta):
     theta = parameter_dict2array(catalog_params)
     k = np.power(10, catalog_params["log10_k0"])
     alpha = catalog_params.get("a", 1.0)
-    if k > 1 - (alpha/beta) and alpha != beta:
+    if k > 1 - (alpha / beta) and alpha != beta:
         early_return_bool = True
     br = branching_ratio(theta, beta)
-    if br > 1.5:  # TODO! EXPERIMENTAL - set arbitrarily - avoid supercritical - some leeway
+    if (
+        br > 1.5
+    ):  # TODO! EXPERIMENTAL - set arbitrarily - avoid supercritical - some leeway
         early_return_bool = True
 
     return early_return_bool
@@ -59,12 +61,12 @@ def early_return(catalog_params, beta):
 
 def earthquake_sim_fn_4_param(key, mu, k0, c, rho):
     # TODO TESTING
-    print('mu, k0, c, rho:', mu, k0, c, rho)
+    print("mu, k0, c, rho:", mu, k0, c, rho)
     try:
-        with open("data/config/SCEDC_30.json", 'r') as f:
+        with open("data/config/SCEDC_30.json", "r") as f:
             simulation_config = json.load(f)
     except FileNotFoundError:
-        with open("../data/config/SCEDC_30.json", 'r') as f:
+        with open("../data/config/SCEDC_30.json", "r") as f:
             simulation_config = json.load(f)
         simulation_config["shape_coords"] = "../" + simulation_config["shape_coords"]
 
@@ -73,15 +75,15 @@ def earthquake_sim_fn_4_param(key, mu, k0, c, rho):
     try:
         params_dict = dict(
             {
-                'log10_mu': np.log10(mu),
-                'log10_k0': np.log10(k0),
-                'a': simulation_config["beta"],
-                'log10_c': np.log10(c),
-                'rho': rho
+                "log10_mu": np.log10(mu),
+                "log10_k0": np.log10(k0),
+                "a": simulation_config["beta"],
+                "log10_c": np.log10(c),
+                "rho": rho,
             }
         )  # Attempt conversion
         # params_dict["a"] = params_dict["a"].item()
-        params_dict['rho'] = params_dict['rho'].item()
+        params_dict["rho"] = params_dict["rho"].item()
     except Exception as e:
         print(e)
 
@@ -106,41 +108,41 @@ def earthquake_sim_fn_4_param(key, mu, k0, c, rho):
             parameters=catalog_params,
             mc=simulation_config["mc"],  # magnitude of completeness
             beta_main=simulation_config["beta"],  # Richter scale magnitude
-            delta_m=simulation_config["delta_m"]  # bin size of magnitudes
+            delta_m=simulation_config["delta_m"],  # bin size of magnitudes
         )
     except Exception as e:
         print(e)
         return None
     synthetic.magnitude = round_half_up(synthetic.magnitude, 1)
-    synthetic.index.name = 'id'
+    synthetic.index.name = "id"
     # primary_start = simulation_config['primary_start']
-    synthetic = synthetic.sort_values(by='time')
+    synthetic = synthetic.sort_values(by="time")
     return synthetic
 
 
 def earthquake_sim_fn(key, mu, a, k0, c, rho):
     # TODO TESTING
-    print('mu, a, k0, c, rho:', mu, a, k0, c, rho)
+    print("mu, a, k0, c, rho:", mu, a, k0, c, rho)
     try:
-        with open("data/config/SCEDC_30.json", 'r') as f:
+        with open("data/config/SCEDC_30.json", "r") as f:
             simulation_config = json.load(f)
     except FileNotFoundError:
-        with open("../data/config/SCEDC_30.json", 'r') as f:
+        with open("../data/config/SCEDC_30.json", "r") as f:
             simulation_config = json.load(f)
     catalog_params = simulation_config["theta_0"].copy()
 
     try:
         params_dict = dict(
             {
-                'log10_mu': np.log10(mu),
-                'log10_k0': np.log10(k0),
-                'a': a,
-                'log10_c': np.log10(c),
-                'rho': rho
+                "log10_mu": np.log10(mu),
+                "log10_k0": np.log10(k0),
+                "a": a,
+                "log10_c": np.log10(c),
+                "rho": rho,
             }
         )  # Attempt conversion
         params_dict["a"] = params_dict["a"].item()
-        params_dict['rho'] = params_dict['rho'].item()
+        params_dict["rho"] = params_dict["rho"].item()
     except Exception as e:
         print(e)
 
@@ -165,13 +167,13 @@ def earthquake_sim_fn(key, mu, a, k0, c, rho):
         parameters=catalog_params,
         mc=simulation_config["mc"],  # magnitude of completeness
         beta_main=simulation_config["beta"],  # Richter scale magnitude
-        delta_m=simulation_config["delta_m"]  # bin size of magnitudes
+        delta_m=simulation_config["delta_m"],  # bin size of magnitudes
     )
 
     synthetic.magnitude = round_half_up(synthetic.magnitude, 1)
-    synthetic.index.name = 'id'
+    synthetic.index.name = "id"
     # primary_start = simulation_config['primary_start']
-    synthetic = synthetic.sort_values(by='time')
+    synthetic = synthetic.sort_values(by="time")
     return synthetic
 
 
@@ -179,7 +181,9 @@ def ripley_k_unmarked(times_days):
     n = len(times_days)
     T = times_days[-1] - times_days[0]
     # NOTE: RYAN constructed W_list
-    W_list = np.concatenate((np.geomspace(0.001, 1, 10, endpoint=False), np.arange(1, 9)))
+    W_list = np.concatenate(
+        (np.geomspace(0.001, 1, 10, endpoint=False), np.arange(1, 9))
+    )
     Kvals = np.zeros(len(W_list))
     # For each w, store a pointer to the right
     pointers = [1] * len(W_list)
@@ -192,7 +196,7 @@ def ripley_k_unmarked(times_days):
             while pointers[k] < n and times_days[pointers[k]] <= t_i + w:
                 pointers[k] += 1
             # Count how many events are in (t_i, t_i + w], excluding i itself
-            sum_counts[k] += (pointers[k] - i - 1)
+            sum_counts[k] += pointers[k] - i - 1
 
     Kvals = (T * sum_counts) / (n * n)
     print("Kvals[0]: ", Kvals[0])
@@ -226,8 +230,8 @@ def ripley_k_thresholded(times_days, mags):
         # We'll do a standard approach: pointer never moves backwards,
         # but we do re-init for each i. This is simpler to read but O(nu * n * len(W_list)).
         # If nu << n, this might be acceptable.
-        
-        # Option B (common): for each w, we do a binary search once for each i. 
+
+        # Option B (common): for each w, we do a binary search once for each i.
         # We'll show Option B, which is often simpler to code:
 
         for i_large in large_indices:
@@ -237,21 +241,24 @@ def ripley_k_thresholded(times_days, mags):
                 # We can do a binary search:
                 # index j such that times[j] <= t_i + w
                 # np.searchsorted returns the insertion index to keep sorted order
-                j = np.searchsorted(times_days, t_i +w,  side='right')
+                j = np.searchsorted(times_days, t_i + w, side="right")
                 # count how many events are <= t_i + w, but strictly greater than i_large
                 # i.e. count = j - (i_large + 1)
                 count_in_window = max(0, j - (i_large + 1))
                 sum_counts_w[k] += count_in_window
 
         # Normalise by nu^2
-        Kvals[i_T, :] = (T*sum_counts_w) / (nu * nu)
+        Kvals[i_T, :] = (T * sum_counts_w) / (nu * nu)
 
     return Kvals
+
 
 def sum_fn(catalog):
     num_summaries = 23
     if catalog is None:  # i.e., something gone wrong in simulation / invalid
-        return np.random.normal(-10, 1.0, num_summaries)  # TODO: make this implausible from valid summaries - but not too wacky
+        return np.random.normal(
+            -10, 1.0, num_summaries
+        )  # TODO: make this implausible from valid summaries - but not too wacky
     cat_sorted = catalog.sort_values("time")
 
     # S1: log num events
@@ -287,9 +294,16 @@ def sum_fn(catalog):
     # Kvals_thresholded = ripley_k_thresholded(times_days, mags)
     # Kvals_thresholded_flat = Kvals_thresholded.flatten()
 
-    summary_stats = np.concatenate([[S1], [S2], [S3], [S4], [S5],
-                                    Kvals_unmarked,
-                                    # Kvals_thresholded_flat
-                                    ])
+    summary_stats = np.concatenate(
+        [
+            [S1],
+            [S2],
+            [S3],
+            [S4],
+            [S5],
+            Kvals_unmarked,
+            # Kvals_thresholded_flat
+        ]
+    )
 
     return summary_stats

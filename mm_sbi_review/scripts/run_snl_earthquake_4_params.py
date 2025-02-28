@@ -1,8 +1,17 @@
-from mm_sbi_review.examples.earthquake import earthquake_sim_fn_4_param, sum_fn, early_return
-from mm_sbi_review.scripts.utils import download_file, extract_tar_gz, combine_ascii_files
+from mm_sbi_review.examples.earthquake import (
+    earthquake_sim_fn_4_param,
+    sum_fn,
+    early_return,
+)
+from mm_sbi_review.scripts.utils import (
+    download_file,
+    extract_tar_gz,
+    combine_ascii_files,
+)
 import numpy as np
 import torch
 from torch import tensor
+
 # from torch.distributions import Distribution, Uniform, Gamma
 from etas.inversion import round_half_up, branching_ratio
 from etas.simulation import generate_catalog, generate_background_events
@@ -40,6 +49,7 @@ def parameter_dict2array(parameters):
         order.insert(0, "alpha")
 
     return np.array([parameters.get(key, None) for key in order])
+
 
 # def parameter_dict2array(param_dict):
 #     # Example placeholder
@@ -122,11 +132,11 @@ def parameter_dict2array(parameters):
 #         self.c_low, self.c_high = 0.0, 1.0
 #         # p ~ Uniform(1, 2)
 #         self.p_low, self.p_high = 1.0, 2.0
-        
+
 #         # without mu, used constrained sampling
 #         self.uni_dist = Uniform(low=jnp.array([0.0, 0.0, 0.0, 0.0]),
 #                                 high=jnp.array([self.beta, 1.0, 2.0, 1.0]))
-        
+
 
 #     @validate_sample
 #     def log_prob(self, value):
@@ -531,6 +541,7 @@ def parameter_dict2array(parameters):
 #         out = out.reshape(*sample_shape, 5)
 #         return out
 
+
 def run_earthquake():
     np.random.seed(123)
     torch.manual_seed(321)
@@ -545,9 +556,13 @@ def run_earthquake():
     true_c = 0.5
     true_p = 1.5
 
-    true_params = {'log10_mu': np.log10(true_mu), 'log10_k0': np.log10(true_k),
-                #    'a': true_alpha,
-                   'log10_c': np.log10(true_c), 'rho': true_p}
+    true_params = {
+        "log10_mu": np.log10(true_mu),
+        "log10_k0": np.log10(true_k),
+        #    'a': true_alpha,
+        "log10_c": np.log10(true_c),
+        "rho": true_p,
+    }
     # TODO: first - set up simulator to take in parameters
     # TODO: SNPE
     # TODO: Priors
@@ -560,44 +575,45 @@ def run_earthquake():
     # Download and extract the file
     download_file(url, local_filename)
     extract_tar_gz(local_filename, extract_path)
-    combine_ascii_files('./raw')
+    combine_ascii_files("./raw")
     raw_catalog = pd.read_csv("raw/SCEDC_catalog.csv")
-    raw_catalog['time'] = pd.to_datetime(raw_catalog['time'])
-    raw_catalog = raw_catalog.sort_values(by='time')
-    raw_catalog = raw_catalog[["time", "longitude", "latitude","magnitude"]].dropna()
+    raw_catalog["time"] = pd.to_datetime(raw_catalog["time"])
+    raw_catalog = raw_catalog.sort_values(by="time")
+    raw_catalog = raw_catalog[["time", "longitude", "latitude", "magnitude"]].dropna()
     raw_catalog.reset_index(drop=False, inplace=True)
 
-    polygon_coords = np.load('data/SCEDC_shape.npy')
+    polygon_coords = np.load("data/SCEDC_shape.npy")
 
     poly = Polygon(polygon_coords)
     gdf = gpd.GeoDataFrame(
         raw_catalog,
-        geometry=gpd.points_from_xy(
-            raw_catalog.latitude, raw_catalog.longitude),)
+        geometry=gpd.points_from_xy(raw_catalog.latitude, raw_catalog.longitude),
+    )
 
     catalog = gdf[gdf.intersects(poly)].copy()
     catalog.drop("geometry", axis=1, inplace=True)
     len_trunc_x = len(catalog)
-    print('Removed',len(raw_catalog)-len_trunc_x, 'events outside polygon')
+    print("Removed", len(raw_catalog) - len_trunc_x, "events outside polygon")
 
     # filter events within timewindow
-    auxiliary_start = '1985-01-01 00:00:00'
-    test_nll_end = '2014-01-11 00:00:00'
-    catalog = catalog[catalog['time']>=auxiliary_start]
-    catalog = catalog[catalog['time']<test_nll_end]
+    auxiliary_start = "1985-01-01 00:00:00"
+    test_nll_end = "2014-01-11 00:00:00"
+    catalog = catalog[catalog["time"] >= auxiliary_start]
+    catalog = catalog[catalog["time"] < test_nll_end]
     len_trunc_t = len(catalog)
-    print('Removed',len_trunc_x-len_trunc_t, 'events outside timewindow')
+    print("Removed", len_trunc_x - len_trunc_t, "events outside timewindow")
 
     M_cut = 3.0
-    catalog = catalog[catalog['magnitude']>=M_cut]
+    catalog = catalog[catalog["magnitude"] >= M_cut]
     len_trunc_m = len(catalog)
-    print('Removed',len_trunc_t-len_trunc_m, 'events below Mcut')
+    print("Removed", len_trunc_t - len_trunc_m, "events below Mcut")
 
     observed_summaries = sum_fn(catalog)
 
     # prior = ETASPrior()  # TODO
-    prior = Uniform(low=jnp.array([0., 0., 0.0, 1.0]),
-                    high=jnp.array([0.0001, 1.0, 1.0, 2.0]))
+    prior = Uniform(
+        low=jnp.array([0.0, 0.0, 0.0, 1.0]), high=jnp.array([0.0001, 1.0, 1.0, 2.0])
+    )
     # prior = dist.Uniform(low=jnp.repeat(0.0, 5),
     #                      high=jnp.repeat(1.0, 5))
     # x_test = jnp.array([[0.0005, 0.1, 0.05, 0.5, 1.5]])
@@ -609,8 +625,9 @@ def run_earthquake():
     rng_key = random.PRNGKey(0)
 
     true_params = jnp.array([true_mu, true_k, true_c, true_p])
+
     def valid_fn(thetas):
-        with open("data/config/SCEDC_30.json", 'r') as f:
+        with open("data/config/SCEDC_30.json", "r") as f:
             simulation_config = json.load(f)
         catalog_params = simulation_config["theta_0"].copy()
         if len(thetas) == 5:
@@ -622,15 +639,15 @@ def run_earthquake():
         try:
             params_dict = dict(
                 {
-                    'log10_mu': np.log10(mu),
-                    'log10_k0': np.log10(k0),
-                    'a': np.array(a),
-                    'log10_c': np.log10(c),
-                    'rho': rho
+                    "log10_mu": np.log10(mu),
+                    "log10_k0": np.log10(k0),
+                    "a": np.array(a),
+                    "log10_c": np.log10(c),
+                    "rho": rho,
                 }
             )  # Attempt conversion
             params_dict["a"] = params_dict["a"].item()
-            params_dict['rho'] = params_dict['rho'].item()
+            params_dict["rho"] = params_dict["rho"].item()
         except Exception as e:
             print(e)
 
@@ -659,20 +676,23 @@ def run_earthquake():
     # observed_summaries = summ_fn(sim_test)  # NOTE: overrides
     # lp = prior.log_prob(true_params)
 
-
-
     print("observed_summaries: ", observed_summaries)
-    mcmc = run_snl(model, prior, sim_fn, summ_fn, rng_key,
-                   observed_summaries,
-                   num_sims_per_round=3000,
-                   num_rounds=5,
-                   true_params=true_params,  # NOTE: dummy
-                   theta_dims=4,
-                   jax_parallelise=False,
-                   num_chains=4,
-                   only_valid_sims_in_first_round=True,
-                   valid_fn=valid_fn
-                   )
+    mcmc = run_snl(
+        model,
+        prior,
+        sim_fn,
+        summ_fn,
+        rng_key,
+        observed_summaries,
+        num_sims_per_round=3000,
+        num_rounds=5,
+        true_params=true_params,  # NOTE: dummy
+        theta_dims=4,
+        jax_parallelise=False,
+        num_chains=4,
+        only_valid_sims_in_first_round=True,
+        valid_fn=valid_fn,
+    )
     mcmc.print_summary()
     # num_prior_samples = 10
     # prior_samples = prior.sample((num_prior_samples,))

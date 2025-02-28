@@ -1,8 +1,17 @@
-from mm_sbi_review.examples.earthquake import earthquake_sim_fn_4_param, sum_fn, early_return
-from mm_sbi_review.scripts.utils import download_file, extract_tar_gz, combine_ascii_files
+from mm_sbi_review.examples.earthquake import (
+    earthquake_sim_fn_4_param,
+    sum_fn,
+    early_return,
+)
+from mm_sbi_review.scripts.utils import (
+    download_file,
+    extract_tar_gz,
+    combine_ascii_files,
+)
 import numpy as np
 import torch
 from torch import tensor
+
 # from torch.distributions import Distribution, Uniform, Gamma
 from etas.inversion import round_half_up, branching_ratio
 from etas.simulation import generate_catalog, generate_background_events
@@ -73,43 +82,43 @@ def run_earthquake():
     # Download and extract the file
     download_file(url, local_filename)
     extract_tar_gz(local_filename, extract_path)
-    combine_ascii_files('./raw')
+    combine_ascii_files("./raw")
     raw_catalog = pd.read_csv("raw/SCEDC_catalog.csv")
-    raw_catalog['time'] = pd.to_datetime(raw_catalog['time'])
-    raw_catalog = raw_catalog.sort_values(by='time')
-    raw_catalog = raw_catalog[["time", "longitude", "latitude","magnitude"]].dropna()
+    raw_catalog["time"] = pd.to_datetime(raw_catalog["time"])
+    raw_catalog = raw_catalog.sort_values(by="time")
+    raw_catalog = raw_catalog[["time", "longitude", "latitude", "magnitude"]].dropna()
     raw_catalog.reset_index(drop=False, inplace=True)
 
-    polygon_coords = np.load('data/SCEDC_shape.npy')
+    polygon_coords = np.load("data/SCEDC_shape.npy")
 
     poly = Polygon(polygon_coords)
     gdf = gpd.GeoDataFrame(
         raw_catalog,
-        geometry=gpd.points_from_xy(
-            raw_catalog.latitude, raw_catalog.longitude),)
+        geometry=gpd.points_from_xy(raw_catalog.latitude, raw_catalog.longitude),
+    )
 
     catalog = gdf[gdf.intersects(poly)].copy()
     catalog.drop("geometry", axis=1, inplace=True)
     len_trunc_x = len(catalog)
-    print('Removed',len(raw_catalog)-len_trunc_x, 'events outside polygon')
+    print("Removed", len(raw_catalog) - len_trunc_x, "events outside polygon")
 
     # filter events within timewindow
-    auxiliary_start = '1985-01-01 00:00:00'
-    test_nll_end = '2014-01-11 00:00:00'
-    catalog = catalog[catalog['time']>=auxiliary_start]
-    catalog = catalog[catalog['time']<test_nll_end]
+    auxiliary_start = "1985-01-01 00:00:00"
+    test_nll_end = "2014-01-11 00:00:00"
+    catalog = catalog[catalog["time"] >= auxiliary_start]
+    catalog = catalog[catalog["time"] < test_nll_end]
     len_trunc_t = len(catalog)
-    print('Removed',len_trunc_x-len_trunc_t, 'events outside timewindow')
+    print("Removed", len_trunc_x - len_trunc_t, "events outside timewindow")
 
     M_cut = 3.0
-    catalog = catalog[catalog['magnitude']>=M_cut]
+    catalog = catalog[catalog["magnitude"] >= M_cut]
     len_trunc_m = len(catalog)
-    print('Removed',len_trunc_t-len_trunc_m, 'events below Mcut')
+    print("Removed", len_trunc_t - len_trunc_m, "events below Mcut")
 
     observed_summaries = sum_fn(catalog)
 
     # prior = ETASPrior()  # TODO
-        # prior = dist.Uniform(low=jnp.repeat(0.0, 5),
+    # prior = dist.Uniform(low=jnp.repeat(0.0, 5),
     #                      high=jnp.repeat(1.0, 5))
     # x_test = jnp.array([[0.0005, 0.1, 0.05, 0.5, 1.5]])
     # lp_val = prior.log_prob(x_test)
@@ -117,11 +126,13 @@ def run_earthquake():
     # prior = Uniform(low=jnp.array([0., 0., 0.0, 1.0]),
     #                 high=jnp.array([0.0001, 0.005, 1.0, 2.0]))
     # prior = Independent(prior, 1)  # TODO: CHECK IF THIS IS NEEDED
-    def get_custom_robust_model(x_obs: jnp.ndarray,
-                        prior: dist,
-                        flow: Optional[FlowNumpyro] = None,
-                        scale_adj_var:  Optional[jnp.ndarray] = None,
-                        standardisation_params=None) -> jnp.ndarray:
+    def get_custom_robust_model(
+        x_obs: jnp.ndarray,
+        prior: dist,
+        flow: Optional[FlowNumpyro] = None,
+        scale_adj_var: Optional[jnp.ndarray] = None,
+        standardisation_params=None,
+    ) -> jnp.ndarray:
         """Get robust numpyro model."""
         laplace_mean = jnp.zeros(len(x_obs))
         laplace_var = jnp.ones(len(x_obs))
@@ -138,21 +149,25 @@ def run_earthquake():
 
         theta = jnp.array([mu, k0, c, rho])
 
-        theta_standard = numpyro.deterministic('theta_standard',
-                                            (theta - standardisation_params['theta_mean'])
-                                            / standardisation_params['theta_std'])
+        theta_standard = numpyro.deterministic(
+            "theta_standard",
+            (theta - standardisation_params["theta_mean"])
+            / standardisation_params["theta_std"],
+        )
         # print('theta_standard: ', theta_standard.shape)
         # Note: better sampling if use standard laplace then scale
-        adj_params = numpyro.sample('adj_params', dist.Laplace(laplace_mean,
-                                                            laplace_var))
-        scaled_adj_params = numpyro.deterministic('adj_params_scaled', adj_params *
-                                                scale_adj_var)
-        x_adj = numpyro.deterministic('x_adj', x_obs - scaled_adj_params)
+        adj_params = numpyro.sample(
+            "adj_params", dist.Laplace(laplace_mean, laplace_var)
+        )
+        scaled_adj_params = numpyro.deterministic(
+            "adj_params_scaled", adj_params * scale_adj_var
+        )
+        x_adj = numpyro.deterministic("x_adj", x_obs - scaled_adj_params)
         # print("x_adj: ", x_adj.shape)
         if flow is not None:  # i.e. if not first round
-            x_adj_sample = numpyro.sample('x_adj_sample',
-                                        FlowNumpyro(flow, theta=theta_standard),
-                                        obs=x_adj)
+            x_adj_sample = numpyro.sample(
+                "x_adj_sample", FlowNumpyro(flow, theta=theta_standard), obs=x_adj
+            )
         else:
             x_adj_sample = x_adj
 
@@ -164,19 +179,18 @@ def run_earthquake():
     sim_fn = earthquake_sim_fn_4_param
     summ_fn = sum_fn
 
-
     # Define the Gamma prior for mu
     mu_prior = Gamma(concentration=0.1, rate=10)
 
     # Define the Uniform priors for the remaining parameters
     other_priors = Uniform(
-        low=jnp.array([0.0, 0.0, 1.0]),
-        high=jnp.array([1.0, 1.0, 2.0])
+        low=jnp.array([0.0, 0.0, 1.0]), high=jnp.array([1.0, 1.0, 2.0])
     )
 
     # Combine the priors into a joint distribution
     class CustomPrior(Distribution):
         support = constraints.real_vector
+
         def sample(self, key, sample_shape=()):
             mu_sample = mu_prior.sample(key, sample_shape)
             other_samples = other_priors.sample(key, sample_shape)
@@ -197,7 +211,7 @@ def run_earthquake():
 
     # true_params = jnp.array([true_mu, true_k, true_c, true_p])
     def valid_fn(thetas):
-        with open("data/config/SCEDC_30.json", 'r') as f:
+        with open("data/config/SCEDC_30.json", "r") as f:
             simulation_config = json.load(f)
         catalog_params = simulation_config["theta_0"].copy()
         if len(thetas) == 5:
@@ -209,15 +223,15 @@ def run_earthquake():
         try:
             params_dict = dict(
                 {
-                    'log10_mu': np.log10(mu),
-                    'log10_k0': np.log10(k0),
-                    'a': np.array(a),
-                    'log10_c': np.log10(c),
-                    'rho': rho
+                    "log10_mu": np.log10(mu),
+                    "log10_k0": np.log10(k0),
+                    "a": np.array(a),
+                    "log10_c": np.log10(c),
+                    "rho": rho,
                 }
             )  # Attempt conversion
             params_dict["a"] = params_dict["a"].item()
-            params_dict['rho'] = params_dict['rho'].item()
+            params_dict["rho"] = params_dict["rho"].item()
         except Exception as e:
             print(e)
 
@@ -250,29 +264,35 @@ def run_earthquake():
     num_sims_per_round = 3000
     theta_dims = 4
     num_rounds = 5 - num_rounds_run_already
-    mcmc = run_rsnl(model, prior, sim_fn, summ_fn,
-                    rng_key,
-                    observed_summaries,
-                    num_sims_per_round=num_sims_per_round,
-                    num_rounds=num_rounds,
-                    true_params=None,  # NOTE: dummy
-                    theta_dims=theta_dims,
-                    jax_parallelise=False,
-                    num_chains=1,
-                    target_accept_prob=0.8,
-                    only_valid_sims_in_first_round=True,
-                    save_each_round=False,
-                    valid_fn=valid_fn,
-                    previous_thetas=thetas_all,
-                    previous_x_sims=x_sims_all,
-                    folder_name=folder_name,
-                    model_param_names=model_param_names,
-                    )
+    mcmc = run_rsnl(
+        model,
+        prior,
+        sim_fn,
+        summ_fn,
+        rng_key,
+        observed_summaries,
+        num_sims_per_round=num_sims_per_round,
+        num_rounds=num_rounds,
+        true_params=None,  # NOTE: dummy
+        theta_dims=theta_dims,
+        jax_parallelise=False,
+        num_chains=1,
+        target_accept_prob=0.8,
+        only_valid_sims_in_first_round=True,
+        save_each_round=False,
+        valid_fn=valid_fn,
+        previous_thetas=thetas_all,
+        previous_x_sims=x_sims_all,
+        folder_name=folder_name,
+        model_param_names=model_param_names,
+    )
     mcmc.print_summary()
     if model_param_names is None:
-        thetas = mcmc.get_samples()['theta']
+        thetas = mcmc.get_samples()["theta"]
     else:
-        thetas = jnp.squeeze(jnp.array([mcmc.get_samples()[name_i] for name_i in model_param_names])).T
+        thetas = jnp.squeeze(
+            jnp.array([mcmc.get_samples()[name_i] for name_i in model_param_names])
+        ).T
         thetas = thetas.reshape((num_sims_per_round, theta_dims))
 
     with open("res/earthquake_4_param/thetas_all_final.pkl", "wb") as f:

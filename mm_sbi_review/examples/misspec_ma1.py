@@ -7,11 +7,6 @@ from jax._src.prng import PRNGKeyArray  # for typing
 import typing
 
 
-import typing
-import jax.numpy as jnp
-import jax.random as random
-
-
 def assumed_dgp(rng_key: typing.Any,  # JAX annoying with key types
                 t1: float,
                 n_obs: int = 100
@@ -29,6 +24,7 @@ def assumed_dgp(rng_key: typing.Any,  # JAX annoying with key types
     w = random.normal(rng_key, shape=(1, n_obs + 2))
     x = w[:, 2:] + t1 * w[:, 1:-1]
     return x
+
 
 def autocov(x: jnp.ndarray,
             lag: int = 1
