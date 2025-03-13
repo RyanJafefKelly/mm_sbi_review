@@ -173,3 +173,5 @@ notebooks/figs/*
 notebooks/SCEC_DC/
 notebooks/*.tar.gz
 data/*
+sbi-logs/*
+plots/*

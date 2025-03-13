@@ -1,5 +1,5 @@
 from mm_sbi_review.examples.earthquake import earthquake_sim_fn, sum_fn, early_return
-from mm_sbi_review.scripts.utils import (
+from mm_sbi_review.utils.utils import (
     download_file,
     extract_tar_gz,
     combine_ascii_files,
