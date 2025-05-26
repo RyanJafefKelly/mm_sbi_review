@@ -270,6 +270,97 @@ def compute_turin_summaries(power_data, delta_f):
     cov_m1_m2 = sample_cov(m1, m2)
     cov_m2_m2 = sample_cov(m2, m2)
 
+    # power_data_avg = torch.mean(power_data, dim=0)
+    # max_power = torch.max(power_data_avg)
+    # median_power = torch.median(power_data_avg)
+    # min_power = torch.min(power_data_avg)
+
+    # 5) Construct the 10-element summary vector
+    summary_vector = torch.tensor(
+        [
+            mean_m0.item(),  # 2) bar{m0}
+            mean_m1.item(),  # 3) bar{m1}
+            mean_m2.item(),  # 4) bar{m2}
+            # max_power.item(),
+            # median_power.item(),
+            # min_power.item(),
+            cov_m0_m0.item(),  # 5) cov(m0,m0)
+            cov_m0_m1.item(),  # 6) cov(m0,m1)
+            cov_m0_m2.item(),  # 7) cov(m0,m2)
+            cov_m1_m1.item(),  # 8) cov(m1,m1)
+            cov_m1_m2.item(),  # 9) cov(m1,m2)
+            cov_m2_m2.item(),  # 10) cov(m2,m2)
+        ],
+        device=device,
+    )
+
+    eps = 1e-30
+    summary_vector[6:] = torch.log(summary_vector[6:] + eps)  # log-scale cov summaries
+    return summary_vector
+
+
+def compute_turin_summaries_with_max(power_data, delta_f):
+    """
+    Computes:
+      - Three temporal moments (m0, m1, m2) for each realisation
+      - The sample means of each moment
+      - The pairwise covariances of these moments
+
+    Args:
+        power_data (torch.Tensor): shape (N_r, N_t),
+            where N_r is number of realisations (or Rx)
+            and N_t is number of time samples.
+            power_data[i, :] = |y^i(t)|^2 in linear scale (not in dB).
+        delta_f (float): frequency spacing used for the simulation
+                         => t_max = 1 / delta_f
+
+    Returns:
+        summary_vector (torch.Tensor): length 10, containing
+            [mean_m1, mean_m2, cov(m0,m0), cov(m0,m1), cov(m0,m2),
+             cov(m1,m1), cov(m1,m2), cov(m2,m2)]
+    """
+
+    device = power_data.device
+    N_r, N_t = power_data.shape
+
+    # power_data = 10.0 ** (power_data / 10.0)
+
+    # Time grid from 0 to t_max
+    t_max = 1.0 / delta_f
+    t = torch.linspace(0.0, t_max, N_t, device=device)
+    # For a simple Riemann sum, define dt
+    dt = t[1] - t[0] if N_t > 1 else t_max
+
+    # 1) Compute the integrals (moments m_l^i) for l = 0,1,2.
+    #    m_l^i = \int_0^{t_max} t^l |y^i(t)|^2 dt
+    #    Approx. with discrete sum: sum_{k=0}^{N_t-1} [t[k]^l * power_data[i,k]] * dt
+    m0 = torch.sum(power_data * dt, dim=1)  # l = 0
+    m1 = torch.sum(t[None, :] * power_data * dt, dim=1)  # l = 1
+    m2 = torch.sum((t[None, :] ** 2) * power_data * dt, dim=1)  # l = 2
+
+    # scale_factor = 1e30  # NOTE: CHECK OKAY, VALUES TOO SMALL CAUSING ERRORS
+    scale_factor = 1e9
+    m0 = m0 * scale_factor
+    m1 = m1 * scale_factor
+    m2 = m2 * scale_factor
+
+    # 2) Sample means across realisations:
+    mean_m0 = torch.mean(m0)
+    mean_m1 = torch.mean(m1)
+    mean_m2 = torch.mean(m2)
+
+    # 3) Sample covariances among (m0, m1, m2).
+    #    cov(x, y) = (1/(N_r-1)) * sum( (x_i - mean_x)(y_i - mean_y) )
+    def sample_cov(x, y):
+        return torch.sum((x - torch.mean(x)) * (y - torch.mean(y))) / (N_r - 1)
+
+    cov_m0_m0 = sample_cov(m0, m0)
+    cov_m0_m1 = sample_cov(m0, m1)
+    cov_m0_m2 = sample_cov(m0, m2)
+    cov_m1_m1 = sample_cov(m1, m1)
+    cov_m1_m2 = sample_cov(m1, m2)
+    cov_m2_m2 = sample_cov(m2, m2)
+
     power_data_avg = torch.mean(power_data, dim=0)
     max_power = torch.max(power_data_avg)
     median_power = torch.median(power_data_avg)

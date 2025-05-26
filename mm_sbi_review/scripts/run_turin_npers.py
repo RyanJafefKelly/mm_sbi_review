@@ -197,7 +197,7 @@ def run_turin_npers(args):
     theta = theta.to(device)
 
     inference = inference.append_simulations(theta, x.unsqueeze(1))
-    density_estimator = inference.train(x_obs=x_obs)
+    density_estimator = inference.train()
 
     prior_new = [
         Uniform(1e-10 * torch.ones(1).to(device), 1e-7 * torch.ones(1).to(device)),

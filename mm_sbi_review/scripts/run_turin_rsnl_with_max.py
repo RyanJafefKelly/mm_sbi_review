@@ -1,4 +1,4 @@
-from mm_sbi_review.examples.turin import turin, compute_turin_summaries
+from mm_sbi_review.examples.turin import turin, compute_turin_summaries_with_max
 import torch
 import numpy as np
 
@@ -22,10 +22,10 @@ def run_turin_rsnl():
         torch.tensor(np.load("data/turin_obs.npy")).float().reshape(N, 801).to(device)
     )
 
-    def compute_turin_summaries_jax_wrapper(x_data_full):
+    def compute_turin_summaries_with_max_jax_wrapper(x_data_full):
         x_data_torch = torch.as_tensor(np.array(x_data_full))
         delta_f = 5000000.0
-        out_torch = compute_turin_summaries(x_data_torch, delta_f)
+        out_torch = compute_turin_summaries_with_max(x_data_torch, delta_f)
         return jnp.array(out_torch.cpu().numpy())
 
     def turin_sim_jax_wrapper(key, *theta):
@@ -47,7 +47,7 @@ def run_turin_rsnl():
 
     B = 4e9
     Ns = 801
-    x_obs = compute_turin_summaries_jax_wrapper(x_data_full)
+    x_obs = compute_turin_summaries_with_max_jax_wrapper(x_data_full)
     turin_sim = turin(B=B, Ns=801, N=N, tau0=0)
 
     num_rounds = 4
@@ -55,14 +55,13 @@ def run_turin_rsnl():
 
     model = get_robust_model
     prior = numpyro.distributions.Uniform(
-        jnp.array([1e-9, 1e-9, 1e7, 1e-10]), jnp.array([1e-8, 1e-8, 1e10, 1e-9])
+        jnp.array([1e-9, 1e-9, 1e7, 1e-10]), jnp.array([1e-8, 1e-8, 5e9, 1e-9])
     )
 
     sim_fn = turin_sim_jax_wrapper
-    sum_fn = compute_turin_summaries_jax_wrapper
-    # dummy_params = jnp.array([2e-9, 2e-9, 2e9, 2e-10])
-    dummy_params = jnp.array([10 ** (-8.4), 7.8e-9, 5e9, 2.8e-10])  # TODO: could use...
-    rng_key = random.PRNGKey(1)
+    sum_fn = compute_turin_summaries_with_max_jax_wrapper
+    dummy_params = jnp.array([2e-9, 2e-9, 1e8, 2e-10])
+    rng_key = random.PRNGKey(0)
 
     # TODO: ON NEXT TRY: GET WORKING MCMC, ESPECIALLY WITH ADJ_PARAMS ... scale_adj_var_x_obs CHECK UP ON
     # TODO: DEBUG: CHECK TO GET ROUND 2 MCMC
@@ -79,9 +78,6 @@ def run_turin_rsnl():
         jax_parallelise=False,
         true_params=dummy_params,
         save_each_round=True,
-        folder_name=folder_name,
-        # mp_parallelise=True,
-        # num_cpus=4,
         # scale_adj_var_x_obs=scale_adj_var_x_obs,
         theta_dims=4,
     )
@@ -92,10 +88,10 @@ def run_turin_rsnl():
         os.makedirs(folder_name)
     inference_data = az.from_numpyro(mcmc)
 
-    with open(f"{folder_name}rsnl_theta_posterior_samples.pkl", "wb") as f:
+    with open(f"{folder_name}rsnl_max_theta_posterior_samples.pkl", "wb") as f:
         pkl.dump(inference_data.posterior.theta, f)
 
-    with open(f"{folder_name}rsnl_adj_params_posterior_samples.pkl", "wb") as f:
+    with open(f"{folder_name}rsnl_max_adj_params_posterior_samples.pkl", "wb") as f:
         pkl.dump(inference_data.posterior.adj_params, f)
 
     plot_and_save_all(inference_data, dummy_params, folder_name=folder_name)
