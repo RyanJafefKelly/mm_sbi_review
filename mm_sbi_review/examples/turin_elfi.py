@@ -158,17 +158,17 @@ def turin_summaries(flat_power_db, delta_f, N=100, Ns=801):
             max_power,
             median_power,
             min_power,
-            np.log(cov_m0_m0 + eps),
-            np.log(cov_m0_m1 + eps),
-            np.log(cov_m0_m2 + eps),
-            np.log(cov_m1_m1 + eps),
-            np.log(cov_m1_m2 + eps),
-            np.log(cov_m2_m2 + eps),
+            cov_m0_m0,
+            cov_m0_m1,
+            cov_m0_m2,
+            cov_m1_m1,
+            cov_m1_m2,
+            cov_m2_m2,
         ],
         axis=1,  # (batch, 12)
     )
 
-    return summaries
+    return np.log(summaries + eps)
 
 
 # ---------------------------------------------------------------------
@@ -200,6 +200,7 @@ def build_turin_elfi(observed_power_db, B=4e9, Ns=801, N=100, tau0=0):
     # --- summary & distance -------------------------------------------
     sum_fn = partial(turin_summaries, delta_f=delta_f, N=N, Ns=Ns)
     S = elfi.Summary(sum_fn, m["TurinSim"], name="S")
-    elfi.AdaptiveDistance(S, name="d")  # TODO: test different distance choice
+    elfi.Distance("euclidean", S, name="d")  # TODO: test different distance choice
+    elfi.AdaptiveDistance(S, name="adaptive_d")  # TODO: test different distance choice
 
     return m
